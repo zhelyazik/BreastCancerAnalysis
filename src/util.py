@@ -72,6 +72,8 @@ def get_balanced_subsample(y, bootstrap_max=False):
     assert np.unique(y).shape[0] == 2
     nonresp = np.arange(y.shape[0])[y == 0]
     resp = np.arange(y.shape[0])[y == 1]
+    np.random.shuffle(resp)
+    np.random.shuffle(nonresp)
     if not bootstrap_max:
         class_size = min(nonresp.shape[0], resp.shape[0])
         return np.hstack((nonresp[:class_size], resp[:class_size]))
@@ -165,3 +167,35 @@ def test_auc_greater(cv_0, cv_1):
             aucs_1.append(auc(fpr, tpr))
     aucs_0, aucs_1 = np.array(aucs_0), np.array(aucs_1)
     return stats.mannwhitneyu(aucs_0, aucs_1, alternative='less').pvalue
+
+
+def do_simmetry_class_cv_by_descr(X, y, samples, descriptions, clf, feature_maker):
+    results_a, results_b, cv_results, accs = [], [], [], []
+    for ind, sample in enumerate(samples):
+        print("iteration: {}".format(ind))
+        stat, common_stat, cv_result, _ = \
+        do_cross_val_by_descr(X, y, sample, descriptions[ind],
+                              clf, feature_maker)
+        results_a.append(stat.mean(axis=0))
+        results_b.append(np.array(common_stat))
+        cv_results.append(cv_result)
+    return np.vstack(results_a), np.vstack(results_b), cv_results, descriptions
+
+
+def do_cross_val_by_descr(X, y, sample, descriptions, clf, feature_maker):
+    cv_results = []
+    ind = 0
+    for train, test in sample:
+        features, _ = feature_maker(X, y, train, test, descriptions[ind])
+        clf.fit(features[train, :], y[train])
+        prediction = clf.predict(features[test, :])
+        proba = clf.predict_proba(features[test, :])
+        cv_results.append((y[test], prediction, proba[:, 1]))
+        ind += 1
+    conf_m = confusion_matrix(cv_results[0][0], cv_results[1][0]) * 0
+    stat, fpr_tpr, tpr, accs = [], [], [], []
+    for actual, predicted, proba in cv_results:
+        conf = confusion_matrix(actual, predicted)
+        stat.append(np.array(get_metrics(conf)))
+        conf_m = conf_m + conf
+    return np.vstack(stat), get_metrics(conf_m), cv_results, descriptions

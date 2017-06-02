@@ -45,8 +45,9 @@ def get_gen_hists(xpression, cl_masks, bins=10):
 def get_pdf_sim(p, q):
     return -q.dot(np.log2(p)) - p.dot(np.log2(q))
 
-def heuristic_1_2_features(X, y, train, test):
-    description = "экспрессии генов отобранных по пересечению 1-й и второй эвристик\n id генов:\n"
+
+def heuristic_1_2_features(X, y, train, test, topn=250):
+    #description = "экспрессии генов отобранных по пересечению 1-й и второй эвристик\n id генов:\n"
     gen_res = []
     for g in range(X.shape[1]):
         lg = LogisticRegression(penalty='l1', C=1)
@@ -59,10 +60,16 @@ def heuristic_1_2_features(X, y, train, test):
     for g in range(X.shape[1]):
         gen_corr.append(abs(np.corrcoef(X[train, g], y[train])[0, 1]))
     gen_corr = np.array(gen_corr)
-    good_h2 = np.arange(X.shape[1])[gen_corr > np.percentile(gen_corr, 98.2)]
-    good = np.array([g for g in set(good_h1).intersection(set(good_h2))])
-    # print(good)
-    description = description + "\t".join([str(gid) for gid in good])
+    gen_corr_indexed = sorted(list(enumerate(gen_corr)), key=lambda p: -p[1])
+    good = []
+    for i, g in gen_corr_indexed:
+        if i in good_h1:
+            good.append(i)
+        if len(good) == topn:
+            break
+            
+    good = np.array(good)   
+    description = "\t".join([str(gid) for gid in good])
     return X[:, good], description
 
 
@@ -112,7 +119,7 @@ def heuristic_4_features(X, y, train, test, topn=70):
 
 
 def heuristic_4_rnd(X, y, train, test, topn=70):
-    print("heuristic 4 started")
+    # print("heuristic 4 started")
     good_pairs = []
     choosen = np.random.choice(np.arange(X.shape[1]), size=2 * topn, replace=False)
     for i in range(0, 2 * topn, 2):
@@ -127,13 +134,12 @@ def identity_heuristic(X, y, train, test):
 
 
 def rnd_gen_heuristic(X, y, train, test, topn=250):
-    g = np.arange(X.shape[0])
-    np.random.shuffle(g)
-    return X[:, g], 'rnd'
+    gids = np.arange(X.shape[0])
+    np.random.shuffle(gids)
+    return X[:, gids[:topn]], '\t'.join([str(gid) for gid in gids[:topn]])
 
 
-def heuristics_3(X, y, train, test, topn=250):
-    print('start M3')
+def heuristic_3(X, y, train, test, topn=250):
     resp_mask = y[train] == 1
     nonresp_mask = y[train] == 0
     gen_pdfs = []
@@ -148,5 +154,18 @@ def heuristics_3(X, y, train, test, topn=250):
         gen_pdf_sims.append(get_pdf_sim(gen_pdf[0], gen_pdf[1]))
     gen_pdf_sims = np.array(gen_pdf_sims)
     good_h3 = get_n_biggest_sims_ids(gen_pdf_sims, np.arange(X.shape[0]), 250)
-    print('complete')
-    return X[:, good_h3], 'heuristic 3'
+    # print('complete')
+    return X[:, good_h3], '\t'.join([str(g) for g in good_h3])
+
+
+def heuristic_4_by_description(X, y, train, test, description):
+    good_pairs = [tuple((int(g) for g in p.replace("compare_expr(", "").replace(")", "").split(", ")))
+                  for p in description.split("\t")]
+    order_features, _ = xpression_to_order_feature(X, good_pairs, np.arange(X.shape[1]))
+    return order_features, description
+
+
+def heuristic_3_by_description(X, y, train, test, description):
+    good_h3 = [int(g) for g in description.strip().split('\t')]
+    return X[:, good_h3], description
+

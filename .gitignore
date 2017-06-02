@@ -1,2 +1,7 @@
 data/*
 !data/.keepme
+!data/*.pkl
+
+
+#PyCharm
+.idea/*
